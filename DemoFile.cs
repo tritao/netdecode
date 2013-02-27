@@ -33,16 +33,37 @@ namespace netdecode
             public MessageType Type;
             public int Tick;
             public byte[] Data;
+            public long Offset;
+        }
+
+        public class GameEventEntry
+        {
+            public uint Type;
+            public string Name;
+        }
+
+        public class GameEvent
+        {
+            public uint Id;
+            public string Name;
+            public IList<GameEventEntry> Entries;
+
+            public GameEvent()
+            {
+                Entries = new List<GameEventEntry>();
+            }
         }
 
         Stream fstream;
         public DemoInfo Info;
         public List<DemoMessage> Messages;
+        public Dictionary<uint, GameEvent> GameEvents;
 
         public DemoFile(Stream s)
         {
             fstream = s;
             Messages = new List<DemoMessage>();
+            GameEvents = new Dictionary<uint, GameEvent>();
             Parse();
         }
 
@@ -89,8 +110,10 @@ namespace netdecode
                         if (msg.Type == MessageType.Packet || msg.Type == MessageType.Signon)
                             reader.BaseStream.Seek(0x54, SeekOrigin.Current); // command/sequence info
                         else if (msg.Type == MessageType.UserCmd)
-                            reader.BaseStream.Seek(0x4, SeekOrigin.Current); // unknown
-                        msg.Data = reader.ReadBytes(reader.ReadInt32());
+                            reader.BaseStream.Seek(0x4, SeekOrigin.Current); // unknown / outgoing sequence
+                        var Size = reader.ReadInt32();
+                        msg.Offset = reader.BaseStream.Position;
+                        msg.Data = reader.ReadBytes(Size);
                         break;
                     case MessageType.SyncTick:
                         msg.Data = new byte[0]; // lol wut
