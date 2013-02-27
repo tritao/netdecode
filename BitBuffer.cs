@@ -2,13 +2,17 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace netdecode
 {
+    [DebuggerDisplay("Bit = {_pos}, Byte = {CurByte}")]
     class BitBuffer
     {
-        readonly byte[] _buf;
-        uint _pos;
+        public readonly byte[] _buf;
+        public uint _pos;
+
+        public uint CurByte { get { return (uint)(_pos / 8.0f); } }
 
         static readonly byte[] mtbl = { 0, 1, 3, 7, 15, 31, 63, 127, 255 };
 
