@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Diagnostics;
 
 namespace netdecode
 {
-    class Packet
+    partial class Packet
     {
         struct MsgHandler
         {
@@ -13,43 +16,89 @@ namespace netdecode
             public Action<BitBuffer, TreeNode> Handler;
         }
 
-        private static readonly Dictionary<uint, MsgHandler> Handlers = new Dictionary<uint, MsgHandler>
+        Dictionary<uint, MsgHandler> Handlers;
+
+        public Dictionary<uint, DemoFile.GameEvent> GameEvents;
+        public GameStringTable StringTable;
+        public ListView List;
+
+        Dictionary<string, Action<BitBuffer, TreeNode, uint>> GameEventHandlers;
+        Dictionary<TF2UserMessage, Action<BitBuffer, TreeNode, uint>> UserMessageHandlers;
+
+        public Packet()
         {
-            {0, new MsgHandler { Name = "net_nop", Handler = (_, node) => { node.ForeColor = Color.Gray; }}},
-            {1, new MsgHandler { Name = "net_disconnect", Handler = net_disconnect }},
-            {2, new MsgHandler { Name = "net_file", Handler = net_file }},
-            {3, new MsgHandler { Name = "net_tick", Handler = net_tick }},
-            {4, new MsgHandler { Name = "net_stringcmd", Handler = net_stringcmd }},
-            {5, new MsgHandler { Name = "net_setconvar", Handler = net_setconvar }},
-            {6, new MsgHandler { Name = "net_signonstate", Handler = net_signonstate }},
+            Handlers = new Dictionary<uint, MsgHandler>
+            {
+                {0, new MsgHandler { Name = "net_nop", Handler = (_, node) => { node.ForeColor = Color.Gray; }}},
+                {1, new MsgHandler { Name = "net_disconnect", Handler = net_disconnect }},
+                {2, new MsgHandler { Name = "net_file", Handler = net_file }},
+                {3, new MsgHandler { Name = "net_tick", Handler = net_tick }},
+                {4, new MsgHandler { Name = "net_stringcmd", Handler = net_stringcmd }},
+                {5, new MsgHandler { Name = "net_setconvar", Handler = net_setconvar }},
+                {6, new MsgHandler { Name = "net_signonstate", Handler = net_signonstate }},
 
-            {7, new MsgHandler { Name = "svc_print", Handler = svc_print }},
-            {8, new MsgHandler { Name = "svc_serverinfo", Handler = svc_serverinfo }},
-            {9, new MsgHandler { Name = "svc_sendtable", Handler = svc_sendtable }},
-            {10, new MsgHandler { Name = "svc_classinfo", Handler = svc_classinfo }},
-            {11, new MsgHandler { Name = "svc_setpause", Handler = svc_setpause }},
-            {12, new MsgHandler { Name = "svc_createstringtable", Handler = svc_createstringtable }},
-            {13, new MsgHandler { Name = "svc_updatestringtable", Handler = svc_updatestringtable }},
-            {14, new MsgHandler { Name = "svc_voiceinit", Handler = svc_voiceinit }},
-            {15, new MsgHandler { Name = "svc_voicedata", Handler = svc_voicedata }},
-            {17, new MsgHandler { Name = "svc_sounds", Handler = svc_sounds }},
-            {18, new MsgHandler { Name = "svc_setview", Handler = svc_setview }},
-            {19, new MsgHandler { Name = "svc_fixangle", Handler = svc_fixangle }},
-            {20, new MsgHandler { Name = "svc_crosshairangle", Handler = svc_crosshairangle }},
-            {21, new MsgHandler { Name = "svc_bspdecal", Handler = svc_bspdecal }},
-            {23, new MsgHandler { Name = "svc_usermessage", Handler = svc_usermessage }},
-            {24, new MsgHandler { Name = "svc_entitymessage", Handler = svc_entitymessage }},
-            {25, new MsgHandler { Name = "svc_gameevent", Handler = svc_gameevent }},
-            {26, new MsgHandler { Name = "svc_packetentities", Handler = svc_packetentities }},
-            {27, new MsgHandler { Name = "svc_tempentities", Handler = svc_tempentities }},
-            {28, new MsgHandler { Name = "svc_prefetch", Handler = svc_prefetch }},
-            {29, new MsgHandler { Name = "svc_menu", Handler = svc_menu }},
-            {30, new MsgHandler { Name = "svc_gameeventlist", Handler = svc_gameeventlist }},
-            {31, new MsgHandler { Name = "svc_getcvarvalue", Handler = svc_getcvarvalue }},
-            {32, new MsgHandler { Name = "svc_cmdkeyvalues", Handler = svc_cmdkeyvalues }}
-        };
+                {7, new MsgHandler { Name = "svc_print", Handler = svc_print }},
+                {8, new MsgHandler { Name = "svc_serverinfo", Handler = svc_serverinfo }},
+                {9, new MsgHandler { Name = "svc_sendtable", Handler = svc_sendtable }},
+                {10, new MsgHandler { Name = "svc_classinfo", Handler = svc_classinfo }},
+                {11, new MsgHandler { Name = "svc_setpause", Handler = svc_setpause }},
+                {12, new MsgHandler { Name = "svc_createstringtable", Handler = svc_createstringtable }},
+                {13, new MsgHandler { Name = "svc_updatestringtable", Handler = svc_updatestringtable }},
+                {14, new MsgHandler { Name = "svc_voiceinit", Handler = svc_voiceinit }},
+                {15, new MsgHandler { Name = "svc_voicedata", Handler = svc_voicedata }},
+                {17, new MsgHandler { Name = "svc_sounds", Handler = svc_sounds }},
+                {18, new MsgHandler { Name = "svc_setview", Handler = svc_setview }},
+                {19, new MsgHandler { Name = "svc_fixangle", Handler = svc_fixangle }},
+                {20, new MsgHandler { Name = "svc_crosshairangle", Handler = svc_crosshairangle }},
+                {21, new MsgHandler { Name = "svc_bspdecal", Handler = svc_bspdecal }},
+                {23, new MsgHandler { Name = "svc_usermessage", Handler = svc_usermessage }},
+                {24, new MsgHandler { Name = "svc_entitymessage", Handler = svc_entitymessage }},
+                {25, new MsgHandler { Name = "svc_gameevent", Handler = svc_gameevent }},
+                {26, new MsgHandler { Name = "svc_packetentities", Handler = svc_packetentities }},
+                {27, new MsgHandler { Name = "svc_tempentities", Handler = svc_tempentities }},
+                {28, new MsgHandler { Name = "svc_prefetch", Handler = svc_prefetch }},
+                {29, new MsgHandler { Name = "svc_menu", Handler = svc_menu }},
+                {30, new MsgHandler { Name = "svc_gameeventlist", Handler = svc_gameeventlist }},
+                {31, new MsgHandler { Name = "svc_getcvarvalue", Handler = svc_getcvarvalue }},
+                {32, new MsgHandler { Name = "svc_cmdkeyvalues", Handler = svc_cmdkeyvalues }}
+            };
 
-        public static void Parse(byte[] data, TreeNode node)
+            GameEvents = new Dictionary<uint, DemoFile.GameEvent>();
+
+            UserMessageHandlers = new Dictionary<TF2UserMessage, Action<BitBuffer, TreeNode, uint>>
+            {
+                {TF2UserMessage.SayText, HandleSayText},
+                {TF2UserMessage.SayText2, HandleSayText2},
+                {TF2UserMessage.TextMsg, HandleTextMsg},
+            };
+
+            GameEventHandlers = new Dictionary<string, Action<BitBuffer, TreeNode, uint>>
+            {
+                {"player_spawn", player_spawn},
+                {"player_death", player_death},
+                {"player_changeclass", player_changeclass},
+                {"teamplay_round_start", teamplay_round_start},
+                {"teamplay_round_active", teamplay_round_active},
+                {"teamplay_round_win", teamplay_round_win},
+                {"teamplay_broadcast_audio", teamplay_broadcast_audio},
+                {"player_builtobject", player_builtobject},
+                {"hltv_status", hltv_status},
+            };
+        }
+
+        public class PacketNodeData
+        {
+            public byte[] Data;
+            public int Offset;
+
+            public PacketNodeData(byte[] data, int offset)
+            {
+                Data = data;
+                Offset = offset;
+            }
+        }
+
+        public void Parse(byte[] data, TreeNode node)
         {
             var bb = new BitBuffer(data);
 
@@ -60,7 +109,11 @@ namespace netdecode
                 if (Handlers.TryGetValue(type, out handler))
                 {
                     var sub = new TreeNode(handler.Name);
+                    var offset = (int)(bb._pos / 8.0);
+                    sub.Tag = new PacketNodeData(data, offset);
+
                     node.Nodes.Add(sub);
+                    
                     if (handler.Handler != null)
                     {
                         handler.Handler(bb, sub);
@@ -77,7 +130,7 @@ namespace netdecode
         }
 
         // do we even encounter these in demo files?
-        static void net_disconnect(BitBuffer bb, TreeNode node) 
+        void net_disconnect(BitBuffer bb, TreeNode node) 
         {
             node.Nodes.Add("Reason: " + bb.ReadString());
         }
@@ -108,9 +161,21 @@ namespace netdecode
                 node.Nodes.Add(bb.ReadString() + ": " + bb.ReadString());
         }
 
+        enum SigOnState : byte
+        {
+            None        = 0,  // no state yet; about to connect
+            Challenge   = 1,  // client challenging server; all OOB packets
+            Connected   = 2,  // client is connected to server; netchans ready
+            New         = 3,  // just got serverinfo and string tables
+            Prespawn    = 4,  // received signon buffers
+            Spawn       = 5,  // ready to receive entity packets
+            Full        = 6,  // we are fully connected; first non-delta packet received
+            ChangeLevel = 7   // server is changing level; please wait
+        }
+
         static void net_signonstate(BitBuffer bb, TreeNode node)
         {
-            node.Nodes.Add("Signon state: " + bb.ReadBits(8));
+            node.Nodes.Add("Signon state: " + (SigOnState)bb.ReadBits(8));
             node.Nodes.Add("Spawn count: " + (int)bb.ReadBits(32));
         }
 
@@ -173,23 +238,91 @@ namespace netdecode
 
         static void svc_createstringtable(BitBuffer bb, TreeNode node)
         {
-            node.Nodes.Add("Table name: " + bb.ReadString());
-            var m = bb.ReadBits(16);
-            node.Nodes.Add("Max entries: " + m);
-            node.Nodes.Add("Number of entries: " + bb.ReadBits((uint)Math.Log(m, 2) + 1));
-            var n = bb.ReadBits(20);
-            node.Nodes.Add("Length in bits: " + n);
-            var f = bb.ReadBool();
-            node.Nodes.Add("Userdata fixed size: " + f);
-            if (f)
+            var tableName = bb.ReadString();
+            node.Nodes.Add("Table name: " + tableName);
+            
+            var maxEntries = bb.ReadBits(16);
+            node.Nodes.Add("Max entries: " + maxEntries);
+            
+            var numEntryBits = (uint)Math.Log(maxEntries, 2);
+            var numEntries = bb.ReadBits(numEntryBits + 1);
+            node.Nodes.Add("Number of entries: " + numEntries);
+            
+            var lengthBits = bb.ReadBits(20);
+            node.Nodes.Add("Length in bits: " + lengthBits);
+            
+            var hasUserData = bb.ReadBool();
+            node.Nodes.Add("Userdata fixed size: " + hasUserData);
+            
+            if (hasUserData)
             {
                 node.Nodes.Add("Userdata size: " + bb.ReadBits(12));
                 node.Nodes.Add("Userdata bits: " + bb.ReadBits(4));
             }
 
-            // ???: this is not in Source 2007 netmessages.h/cpp it seems. protocol version?
-            node.Nodes.Add("Compressed: " + bb.ReadBool());
-            bb.Seek(n);
+            bool isCompressed = bb.ReadBool();
+            node.Nodes.Add("Compressed: " + isCompressed);
+
+            var endBit = bb._pos + lengthBits;
+
+            if (isCompressed)
+            {
+                var table = new List<string>();
+                for (uint e = 0; e < numEntries; ++e)
+                {
+                    uint originalLength = bb.ReadBits(32);
+                    uint compressedLength = bb.ReadBits(32);
+
+                    // struct lzss_header_t
+                    // {
+                    //     unsigned int id;
+                    //     unsigned int actualSize; // always little endian
+                    // };
+
+                    var id = bb.ReadBits(32);
+                    Debug.Assert(id == (('S' << 24) | ('S' << 16) | ('Z' << 8) | ('L')));
+
+                    var actualSize = bb.ReadBits(32);
+
+                    var compressedData = new List<byte>();
+                    for (uint i = 0; i < compressedLength; ++i)
+                    {
+                        compressedData.Add((byte)bb.ReadBits(8));
+                    }
+
+                    //File.WriteAllBytes(e + "_c.dmp", compressedData.ToArray());
+
+                    var decompressedData = LZSS.Decompress(compressedData.ToArray(), actualSize);
+                    Debug.Assert(decompressedData.Length == actualSize);
+
+                    //File.WriteAllBytes(e + "_u.dmp", decompressedData);
+
+                    var dbb = new BitBuffer(decompressedData);
+
+                    //var hasIndex = dbb.ReadBool();
+                    //if (!hasIndex)
+                    //{
+                    //    var entryIndex = dbb.ReadBits(numEntryBits);
+                    //}
+
+                    //var substringCheck = bb.ReadBool();
+
+                    //if (substringCheck)
+                    //{
+
+                    //}
+                    //else
+                    //{
+                    //    var str = bb.ReadString();
+                    //    table.Add(str);
+                    //}
+
+                    //var text = bb.ReadString();
+                    bb.Seek(120);
+                }
+            }
+
+            bb.Seek(lengthBits);
         }
 
         static void svc_updatestringtable(BitBuffer bb, TreeNode node)
@@ -256,12 +389,85 @@ namespace netdecode
             node.Nodes.Add("Low priority: " + bb.ReadBool());
         }
 
-        static void svc_usermessage(BitBuffer bb, TreeNode node)
+        enum TF2UserMessage
         {
-            node.Nodes.Add("Message type: " + bb.ReadBits(8));
-            var b = bb.ReadBits(11);
-            node.Nodes.Add("Length in bits: " + b);
-            bb.Seek(b);
+            Geiger,
+            Train,
+            HudText,
+            SayText,
+            SayText2,
+            TextMsg,
+            ResetHUD,
+            GameTitle,
+            ItemPickup,
+            ShowMenu,
+            Shake,
+            Fade,
+            VGUIMenu,
+            Rumble,
+            CloseCaption,
+            SendAudio,
+            VoiceMask,
+            RequestState,
+            Damage,
+            HintText,
+            KeyHintText,
+            HudMsg,
+            AmmoDenied,
+            AchievementEvent,
+            UpdateRadar,
+            VoiceSubtitle,
+            HudNotify,
+            HudNotifyCustom,
+            PlayerStatsUpdate,
+            PlayerIgnited,
+            PlayerIgnitedInv,
+            HudArenaNotify,
+            UpdateAchievement,
+            TrainingMsg,
+            TrainingObjective,
+            DamageDodged,
+            PlayerJarated,
+            PlayerExtinguished,
+            PlayerJaratedFade,
+            PlayerShieldBlocked,
+            BreakModel,
+            CheapBreakModel,
+            BreakModel_Pumpkin,
+            BreakModelRocketDud,
+            CallVoteFailed,
+            VoteStart,
+            VotePass,
+            VoteFailed,
+            VoteSetup,
+            PlayerBonusPoints,
+            SpawnFlyingBird,
+            PlayerGodRayEffect,
+            SPHapWeapEvent,
+            HapDmg,
+            HapPunch,
+            HapSetDrag,
+            HapSetConst,
+            HapMeleeContact,
+        }
+
+        void svc_usermessage(BitBuffer bb, TreeNode node)
+        {
+            var userMsgType = (TF2UserMessage)bb.ReadBits(8);
+            node.Nodes.Add("Message type: " + userMsgType);
+
+            var lengthBits = bb.ReadBits(11);
+            node.Nodes.Add("Length in bits: " + lengthBits);
+
+            if (UserMessageHandlers.ContainsKey(userMsgType))
+            {
+                var handler = UserMessageHandlers[userMsgType];
+                handler(bb, node, lengthBits);
+            }
+            else
+            {
+                bb.Seek(lengthBits);
+            }
         }
 
         static void svc_entitymessage(BitBuffer bb, TreeNode node)
@@ -273,11 +479,29 @@ namespace netdecode
             bb.Seek(b);
         }
 
-        static void svc_gameevent(BitBuffer bb, TreeNode node)
+        void svc_gameevent(BitBuffer bb, TreeNode node)
         {
-            var b = bb.ReadBits(11);
-            node.Nodes.Add("Length in bits: " + b);
-            bb.Seek(b);
+            var lengthBits = bb.ReadBits(11);
+            node.Nodes.Add("Length in bits: " + lengthBits);
+
+            var gameEventId = bb.ReadBits(9);
+
+            if (GameEvents.ContainsKey(gameEventId))
+            {
+                var gameEvent = GameEvents[gameEventId];
+                node.Nodes.Add("Event: " + gameEvent.Name);
+
+                if (GameEventHandlers.ContainsKey(gameEvent.Name))
+                {
+                    var handler = GameEventHandlers[gameEvent.Name];
+                    handler(bb, node, lengthBits - 9);
+                    return;
+                }
+
+                AddItem("SVC_GameEvent", gameEvent.Name);
+            }
+
+            bb.Seek(lengthBits-9);
         }
 
         static void svc_packetentities(BitBuffer bb, TreeNode node)
@@ -316,12 +540,49 @@ namespace netdecode
             bb.Seek(b << 3);
         }
 
-        static void svc_gameeventlist(BitBuffer bb, TreeNode node)
+        void svc_gameeventlist(BitBuffer bb, TreeNode node)
         {
-            node.Nodes.Add("Number of events: " + bb.ReadBits(9));
-            var b = bb.ReadBits(20);
-            node.Nodes.Add("Length in bits: " + b);
-            bb.Seek(b);
+            GameEvents.Clear();
+
+            var numGameEvents = bb.ReadBits(9);
+
+            node.Nodes.Add("Number of events: " + numGameEvents);
+            var lengthBits = bb.ReadBits(20);
+            node.Nodes.Add("Length in bits: " + lengthBits);
+
+            for (var i = 0; i < numGameEvents; i++)
+            {
+                var id = bb.ReadBits(9);
+                string name = bb.ReadString();
+
+                var gameEvent = new DemoFile.GameEvent();
+                gameEvent.Id = id;
+                gameEvent.Name = name;
+
+                var eventNode = node.Nodes.Add("[" + id + "] " + name);
+
+                while (true)
+                {
+                    var entryType = bb.ReadBits(3);
+
+                    if (entryType == 0)
+                    {
+                        // End of event description
+                        break;
+                    }
+
+                    var entryName = bb.ReadString();
+                    eventNode.Nodes.Add(entryName);
+
+                    var entry = new DemoFile.GameEventEntry();
+                    entry.Type = entryType;
+                    entry.Name = entryName;
+
+                    gameEvent.Entries.Add(entry);
+                }
+
+                GameEvents.Add(id, gameEvent);
+            }
         }
 
         static void svc_getcvarvalue(BitBuffer bb, TreeNode node)
